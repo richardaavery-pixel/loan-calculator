@@ -8,7 +8,7 @@ st.set_page_config(
 
 st.title("Commercial Loan Overpayment & Term Modeller")
 st.markdown(
-    "Accurate baseline projection up to **April 2027** maintaining your exact current payment structures (7.25% tracking rate / 3.75% BoE base rate)."
+    "Modelling baseline balances up to **April 2027** incorporating quarterly interest capitalization for Loan 3 (NW) and standard monthly profiles for Loans 1 & 2 (7.25% tracking rate / 3.75% BoE base rate)."
 )
 
 # --- SIDEBAR CONTROLS ---
@@ -42,44 +42,49 @@ goal_type = st.sidebar.radio(
 annual_rate = 0.0725
 monthly_rate = annual_rate / 12
 
-# Loan 1 (WA): Balance £500,680.49 | Capital £8,632.42 | Total June payment was ~£11,667.37
+# Loan 1 (WA) & Loan 2 (W) June baselines
 b1_june = 500680.49
 p1_cap = 8632.42
+l1_total_june = p1_cap + (b1_june * monthly_rate)
 t1_rem = 58
 
-# Loan 2 (W): Balance £445,076.93 | Capital £7,673.74 | Total June payment was ~£10,371.64
 b2_june = 445076.93
 p2_cap = 7673.74
+l2_total_june = p2_cap + (b2_june * monthly_rate)
 t2_rem = 61
 
-# Loan 3 (NW): Balance £1,828,599.64 | Total group payment £35,395.17
-# Therefore Loan 3 current total monthly service = Group Total (£35,395.17) - Loan 1 Total - Loan 2 Total
+# Loan 3 (NW) June baseline & implied monthly capital payment
+# Total group payment is £35,395.17. Loans 1 & 2 take their total monthly outlays, leaving the rest for Loan 3.
 b3_june = 1828599.64
 t3_rem = 58
 total_group_pmt = 35395.17
-l1_total_june = p1_cap + (b1_june * monthly_rate)
-l2_total_june = p2_cap + (b2_june * monthly_rate)
-l3_total_june = total_group_pmt - (l1_total_june + l2_total_june)
+l3_monthly_cash = total_group_pmt - (l1_total_june + l2_total_june)
 
 
-# --- FORWARD PROJECTION TO APRIL 2027 (9 months) ---
+# --- FORWARD PROJECTION TO APRIL 2027 (9 months: July 2026 -> April 2027) ---
+# Months mapping: July(1), Aug(2), Sep(3-Q End), Oct(4), Nov(5), Dec(6-Q End), Jan(7), Feb(8), Mar(9-Q End), Apr(10-Lump Sum point)
 def project_to_april(b1, b2, b3):
   b1_curr, b2_curr, b3_curr = b1, b2, b3
-  for m in range(9):
-    # Loan 1
+  accumulated_i3 = 0.0
+
+  for m in range(1, 10):  # 9 months from July to March inclusive
+    # Loans 1 & 2 standard monthly step
     i1 = b1_curr * monthly_rate
     c1 = l1_total_june - i1
-    b1_curr = b1_curr - c1 + i1  # standard amortization adjustment
+    b1_curr = b1_curr - c1 + i1
 
-    # Loan 2
     i2 = b2_curr * monthly_rate
     c2 = l2_total_june - i2
     b2_curr = b2_curr - c2 + i2
 
-    # Loan 3 (Quarterly interest capitalization check at month 3, 6, 9)
-    i3 = b3_curr * monthly_rate
-    c3 = l3_total_june - i3
-    b3_curr = b3_curr - c3 + i3
+    # Loan 3: Monthly cash payment reduces balance continuously, interest accumulates for quarterly capitalization
+    b3_curr = b3_curr - l3_monthly_cash
+    accumulated_i3 += b3_curr * monthly_rate
+
+    # Check for quarter-end capitalization (Months 3 [Sep], 6 [Dec], 9 [Mar])
+    if m in [3, 6, 9]:
+      b3_curr += accumulated_i3
+      accumulated_i3 = 0.0  # reset for next quarter
 
   return (
       max(0, b1_curr),
@@ -110,7 +115,7 @@ col2.metric(
 col3.metric(
     "Loan 3 (NW)",
     f"£{b3_apr:,.2f}",
-    f"{t3_apr_rem} Rem. Months | ~£{l3_total_june:,.2f}pm",
+    f"{t3_apr_rem} Rem. Months | ~£{l3_monthly_cash:,.2f}pm cash",
 )
 
 # --- APPLY LUMP SUM ALLOCATION ---
@@ -158,7 +163,10 @@ def calc_new_payment(balance, original_term):
 if "Reduce Monthly Payment" in goal_type:
   new_l1_pmt = calc_new_payment(b1_post, t1_apr_rem)
   new_l2_pmt = calc_new_payment(b2_post, t2_apr_rem)
-  new_l3_pmt = calc_new_payment(b3_post, t3_apr_rem)
+  # For Loan 3, reducing payment scales down the monthly cash requirement proportionally based on balance drop
+  reduction_factor = b3_post / b3_apr if b3_apr > 0 else 1
+  new_l3_pmt = l3_monthly_cash * reduction_factor
+
   total_new_group_pmt = new_l1_pmt + new_l2_pmt + new_l3_pmt
 
   summary_df = pd.DataFrame({
@@ -183,7 +191,7 @@ else:
 
 
   def calc_new_term(balance, pmt):
-    if balance <= 0 or pmt <= (balance * monthly_rate):
+    if balance <= 0 or pmt <= 0:
       return 0
     return -np.log(1 - (balance * monthly_rate) / pmt) / np.log(
         1 + monthly_rate
@@ -192,7 +200,7 @@ else:
 
   new_t1 = calc_new_term(b1_post, l1_total_june)
   new_t2 = calc_new_term(b2_post, l2_total_june)
-  new_t3 = calc_new_term(b3_post, l3_total_june)
+  new_t3 = calc_new_term(b3_post, l3_monthly_cash)
 
   term_df = pd.DataFrame({
       "Loan Tranche": ["Loan 1 (WA)", "Loan 2 (W)", "Loan 3 (NW)"],
