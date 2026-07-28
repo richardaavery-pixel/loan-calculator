@@ -8,7 +8,7 @@ st.set_page_config(
 
 st.title("Commercial Loan Overpayment & Term Modeller")
 st.markdown(
-    "Modelling baseline balances up to **April 2027** incorporating quarterly interest capitalization for Loan 3 (NW) and standard monthly profiles for Loans 1 & 2 (7.25% tracking rate / 3.75% BoE base rate)."
+    "Modelling baseline balances up to **April 2027** incorporating quarterly interest capitalization for Loan 3 (NW) at its exact £35,395.17pm payment rate (7.25% tracking rate / 3.75% BoE base rate)."
 )
 
 # --- SIDEBAR CONTROLS ---
@@ -53,16 +53,13 @@ p2_cap = 7673.74
 l2_total_june = p2_cap + (b2_june * monthly_rate)
 t2_rem = 61
 
-# Loan 3 (NW) June baseline & implied monthly capital payment
-# Total group payment is £35,395.17. Loans 1 & 2 take their total monthly outlays, leaving the rest for Loan 3.
+# Loan 3 (NW) June baseline & exact standalone monthly payment
 b3_june = 1828599.64
 t3_rem = 58
-total_group_pmt = 35395.17
-l3_monthly_cash = total_group_pmt - (l1_total_june + l2_total_june)
+l3_monthly_cash = 35395.17
 
 
 # --- FORWARD PROJECTION TO APRIL 2027 (9 months: July 2026 -> April 2027) ---
-# Months mapping: July(1), Aug(2), Sep(3-Q End), Oct(4), Nov(5), Dec(6-Q End), Jan(7), Feb(8), Mar(9-Q End), Apr(10-Lump Sum point)
 def project_to_april(b1, b2, b3):
   b1_curr, b2_curr, b3_curr = b1, b2, b3
   accumulated_i3 = 0.0
@@ -84,7 +81,7 @@ def project_to_april(b1, b2, b3):
     # Check for quarter-end capitalization (Months 3 [Sep], 6 [Dec], 9 [Mar])
     if m in [3, 6, 9]:
       b3_curr += accumulated_i3
-      accumulated_i3 = 0.0  # reset for next quarter
+      accumulated_i3 = 0.0
 
   return (
       max(0, b1_curr),
@@ -99,6 +96,8 @@ def project_to_april(b1, b2, b3):
 b1_apr, b2_apr, b3_apr, t1_apr_rem, t2_apr_rem, t3_apr_rem = project_to_april(
     b1_june, b2_june, b3_june
 )
+
+total_group_payment = l1_total_june + l2_total_june + l3_monthly_cash
 
 st.subheader("1. Projected Debt Position (April 2027 Pre-Lump Sum)")
 col1, col2, col3 = st.columns(3)
@@ -115,7 +114,7 @@ col2.metric(
 col3.metric(
     "Loan 3 (NW)",
     f"£{b3_apr:,.2f}",
-    f"{t3_apr_rem} Rem. Months | ~£{l3_monthly_cash:,.2f}pm cash",
+    f"{t3_apr_rem} Rem. Months | £{l3_monthly_cash:,.2f}pm cash",
 )
 
 # --- APPLY LUMP SUM ALLOCATION ---
@@ -163,7 +162,6 @@ def calc_new_payment(balance, original_term):
 if "Reduce Monthly Payment" in goal_type:
   new_l1_pmt = calc_new_payment(b1_post, t1_apr_rem)
   new_l2_pmt = calc_new_payment(b2_post, t2_apr_rem)
-  # For Loan 3, reducing payment scales down the monthly cash requirement proportionally based on balance drop
   reduction_factor = b3_post / b3_apr if b3_apr > 0 else 1
   new_l3_pmt = l3_monthly_cash * reduction_factor
 
@@ -181,7 +179,7 @@ if "Reduce Monthly Payment" in goal_type:
       })
   )
   st.success(
-      f"By injecting £{lump_sum:,.2f} in April 2027, your total monthly group debt service drops from ~£35,395.17 down to **£{total_new_group_pmt:,.2f}**."
+      f"By injecting £{lump_sum:,.2f} in April 2027, your total monthly group debt service drops from ~£{total_group_payment:,.2f} down to **£{total_new_group_pmt:,.2f}**."
   )
 
 else:
