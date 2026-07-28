@@ -196,9 +196,13 @@ else:
     )
 
 
-  new_t1 = calc_new_term(b1_post, l1_total_june)
-  new_t2 = calc_new_term(b2_post, l2_total_june)
-  new_t3 = calc_new_term(b3_post, l3_monthly_cash)
+  # If lump sum is 0, explicitly retain exact baseline remaining months
+  if lump_sum == 0:
+    new_t1, new_t2, new_t3 = t1_apr_rem, t2_apr_rem, t3_apr_rem
+  else:
+    new_t1 = calc_new_term(b1_post, l1_total_june)
+    new_t2 = calc_new_term(b2_post, l2_total_june)
+    new_t3 = calc_new_term(b3_post, l3_monthly_cash)
 
   term_df = pd.DataFrame({
       "Loan Tranche": ["Loan 1 (WA)", "Loan 2 (W)", "Loan 3 (NW)"],
