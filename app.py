@@ -39,8 +39,8 @@ goal_type = st.sidebar.radio(
 )
 
 # --- BASELINE PARAMETERS (As of June 2026) ---
-# Rates
-annual_rate = 0.0725  | 3.5% + 3.75% Base Rate
+# Rates (3.5% + 3.75% Base Rate = 7.25%)
+annual_rate = 0.0725
 monthly_rate = annual_rate / 12
 
 # Loan 1: WA
@@ -56,25 +56,21 @@ t2_rem = 61
 # Loan 3: NW (Est June balance based on trajectory)
 b3_june = 1828599.64
 t3_rem = 58
-# Combined base monthly servicing for 1 & 2 is ~16,306. Total group is 35,395.17.
-# Loan 3 covers the remaining capital component of the monthly blended commitment.
 p3_cap_est = 35395.17 - (p1_cap + p2_cap)
 
 
-# --- FUNCTION TO PROJECT FORWARD TO APRIL 2027 (9 months: July 2026 -> April 2027) ---
+# --- FUNCTION TO PROJECT FORWARD TO APRIL 2027 ---
 def project_to_april(b1, b2, b3):
   months_to_april = 9
-  # Simple loop simulation for 9 months
   for _ in range(months_to_april):
-    # Loan 1
     i1 = b1 * monthly_rate
     b1 = b1 - p1_cap + i1
-    # Loan 2
+
     i2 = b2 * monthly_rate
     b2 = b2 - p2_cap + i2
-    # Loan 3 (approx capital drop per month based on standard amortization structural run rate)
+
     i3 = b3 * monthly_rate
-    b3 = b3 - p3_cap_est + i3  # Note: Q-end capitalization happens naturally
+    b3 = b3 - p3_cap_est + i3
 
   return max(0, b1), max(0, b2), max(0, b3)
 
@@ -118,11 +114,9 @@ st.divider()
 st.subheader("2. Post-Lump Sum Impact Analysis")
 
 
-# Helper to calculate new payment given balance, original rate, and remaining term
 def calc_new_payment(balance, original_term):
   if balance <= 0 or original_term <= 0:
     return 0
-  # Standard amortization formula: PMT = P * r * (1+r)^n / ((1+r)^n - 1)
   return (
       balance
       * monthly_rate
@@ -131,9 +125,7 @@ def calc_new_payment(balance, original_term):
   )
 
 
-# Calculations based on goal type
 if "Reduce Monthly Payment" in goal_type:
-  # Keep terms fixed at ~50, 53, 50 months respectively
   new_p1_cap = calc_new_payment(b1_post, 50)
   new_p2_cap = calc_new_payment(b2_post, 53)
   new_p3_cap = calc_new_payment(b3_post, 50)
@@ -156,18 +148,18 @@ if "Reduce Monthly Payment" in goal_type:
   )
 
 else:
-  # Reduce term keeping original payment structure roughly stable
   st.markdown(
       "*Note: Term reduction calculation holds current payment structures flat against lower principal bases, accelerating clearance dates.*"
   )
-  # Rough term reduction estimation in months saved
-  # n_new = -ln(1 - (B_post * r) / PMT) / ln(1 + r)
+
+
   def calc_new_term(balance, pmt):
     if balance <= 0 or pmt <= (balance * monthly_rate):
       return 0
     return -np.log(1 - (balance * monthly_rate) / pmt) / np.log(
         1 + monthly_rate
     )
+
 
   new_t1 = calc_new_term(b1_post, p1_cap + (b1_apr * monthly_rate))
   new_t2 = calc_new_term(b2_post, p2_cap + (b2_apr * monthly_rate))
